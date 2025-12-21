@@ -1,0 +1,1 @@
+{"capabilities":{"multi_mailbox":false,"nfc_pairing":false,"pow":false},"handle":"alice.wspr.f3nixid.eth","mailboxes":[{"prio":10,"url":"http://localhost:8080"}],"pub":{"ed25519_spki_b64u":"MCowBQYDK2VuAyEAiub2SURgH_ySApW2ugGqj45ohYgmrgklwkRR3znAtlM","x25519_spki_b64u":"MCowBQYDK2VwAyEAfQatR7kxyKsma8xoagZdCfareiC_jBuMKrvNtfOWbFA"},"service":"whisper","updated":1766177000,"v":1}
