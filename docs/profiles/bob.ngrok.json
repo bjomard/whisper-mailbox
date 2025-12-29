@@ -10,11 +10,6 @@
       "id": "xZBncGluWkgUI444GWwmzniqLUqiw011",
       "prio": 100,
       "url": "https://hyacinth-bromidic-cordell.ngrok-free.dev"
-    },
-    {
-      "id": "xZBncGluWkgUI444GWwmzniqLUqiw011",
-      "prio": 10,
-      "url": "http://localhost:8080"
     }
   ],
   "pub": {
