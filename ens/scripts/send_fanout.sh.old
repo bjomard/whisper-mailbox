@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+die(){ echo "❌ $*" >&2; exit 1; }
+need(){ command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
+
+need jq; need curl; need node; need python3; need xargs
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ENS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+DIST_DIR="$ENS_DIR/dist"
+RESOLVE_JS="$DIST_DIR/resolve_verify.js"
+ENCRYPT_JS="$DIST_DIR/encrypt_to_contactcard.js"
+[[ -f "$RESOLVE_JS" ]] || die "Missing $RESOLVE_JS"
+[[ -f "$ENCRYPT_JS" ]] || die "Missing $ENCRYPT_JS"
+
+NAME="${1:?usage: send_fanout.sh <ens_name> <message>}"
+PLAINTEXT="${2:?missing message}"
+
+FROM_HANDLE="${FROM_HANDLE:-alice.wspr.f3nixid.eth}"
+FANOUT_PARALLEL="${FANOUT_PARALLEL:-8}"
+FANOUT_MAX_MB="${FANOUT_MAX_MB:-2}"
+
+MB_HTTP_TIMEOUT="${MB_HTTP_TIMEOUT:-15}"
+MB_CONNECT_TIMEOUT="${MB_CONNECT_TIMEOUT:-5}"
+WHISPER_EXPIRES_IN_SEC="${WHISPER_EXPIRES_IN_SEC:-}"
+
+cd "$ENS_DIR"
+if [[ -f .env ]]; then
+  set -a; . .env; set +a
+fi
+
+: "${RPC_URL:?missing RPC_URL}"
+: "${DEPOSIT_TOKEN:?missing DEPOSIT_TOKEN}"
+
+echo "[send_fanout] name=$NAME"
+echo "[send_fanout] from=$FROM_HANDLE"
+echo "[send_fanout] parallel=$FANOUT_PARALLEL max_mb=$FANOUT_MAX_MB"
+
+# --- resolve ---
+RESOLVE_JSON="$(node "$RESOLVE_JS" "$NAME")"
+jq -e . >/dev/null <<<"$RESOLVE_JSON" || die "resolve_verify returned non-JSON"
+[[ "$(jq -r '.ok' <<<"$RESOLVE_JSON")" == "true" ]] || { jq . <<<"$RESOLVE_JSON" >&2; die "resolve_verify not ok"; }
+
+URI="$(jq -r '.uri' <<<"$RESOLVE_JSON")"
+[[ -n "$URI" && "$URI" != "null" ]] || die "missing contactcard uri"
+echo "[send_fanout] contactcard uri=$URI"
+
+# --- contactcard ---
+CARD_JSON="$(curl -fsSL "$URI")"
+[[ "$(jq '.mailboxes | length' <<<"$CARD_JSON")" -gt 0 ]] || die "ContactCard has no mailboxes"
+
+# --- select mailboxes (JSON array) ---
+if [[ "$FANOUT_MAX_MB" =~ ^[0-9]+$ ]] && [[ "$FANOUT_MAX_MB" -gt 0 ]]; then
+  MB_LIST="$(jq -c --argjson n "$FANOUT_MAX_MB" '.mailboxes | sort_by(.prio) | reverse | .[0:$n]' <<<"$CARD_JSON")"
+else
+  MB_LIST="$(jq -c '.mailboxes | sort_by(.prio) | reverse' <<<"$CARD_JSON")"
+fi
+echo "[send_fanout] mailboxes selected: $(jq 'length' <<<"$MB_LIST")"
+
+# --- temp files ---
+TMP_CARD="$(mktemp)"
+TMP_ENV="$(mktemp)"
+RESULTS="$(mktemp)"
+trap 'rm -f "$TMP_CARD" "$TMP_ENV" "$RESULTS"' EXIT
+
+printf '%s' "$CARD_JSON" > "$TMP_CARD"
+
+# --- encrypt once ---
+node "$ENCRYPT_JS" "$TMP_CARD" "$NAME" "$FROM_HANDLE" "$PLAINTEXT" > "$TMP_ENV"
+
+EXPIRES_AT=""
+if [[ -n "$WHISPER_EXPIRES_IN_SEC" ]]; then
+  [[ "$WHISPER_EXPIRES_IN_SEC" =~ ^[0-9]+$ ]] || die "WHISPER_EXPIRES_IN_SEC must be integer seconds"
+  EXPIRES_AT="$(( $(date +%s) + WHISPER_EXPIRES_IN_SEC ))"
+fi
+echo "[send_fanout] expires_at=$EXPIRES_AT"
+
+MSG_ID="$(python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip("="))')"
+echo "[send_fanout] msg_id=$MSG_ID"
+
+export DEPOSIT_TOKEN MSG_ID TMP_ENV MB_HTTP_TIMEOUT MB_CONNECT_TIMEOUT EXPIRES_AT
+
+# worker takes primitive args (no JSON through shell)
+worker() {
+  local url="$1"
+  local id="$2"
+  local prio="$3"
+
+  if [[ -z "$url" || "$url" == "null" || -z "$id" || "$id" == "null" ]]; then
+    echo "{\"ok\":false,\"prio\":$prio,\"url\":\"$url\",\"id\":\"$id\",\"err\":\"missing url/id\"}"
+    return 0
+  fi
+
+  local tmp http body
+  tmp="$(mktemp)"
+
+  if [[ -n "${EXPIRES_AT}" ]]; then
+    http="$(curl -sS -o "$tmp" -w "%{http_code}" \
+      --connect-timeout "$MB_CONNECT_TIMEOUT" --max-time "$MB_HTTP_TIMEOUT" \
+      -X POST "${url}/v1/mailboxes/${id}/deposit" \
+      -H "Authorization: Bearer ${DEPOSIT_TOKEN}" \
+      -H "X-Whisper-MsgId: ${MSG_ID}" \
+      -H "X-Whisper-ExpiresAt: ${EXPIRES_AT}" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @"${TMP_ENV}" || true)"
+  else
+    http="$(curl -sS -o "$tmp" -w "%{http_code}" \
+      --connect-timeout "$MB_CONNECT_TIMEOUT" --max-time "$MB_HTTP_TIMEOUT" \
+      -X POST "${url}/v1/mailboxes/${id}/deposit" \
+      -H "Authorization: Bearer ${DEPOSIT_TOKEN}" \
+      -H "X-Whisper-MsgId: ${MSG_ID}" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @"${TMP_ENV}" || true)"
+  fi
+
+  body="$(head -c 200 "$tmp" | tr '\n\r' ' ')"
+  rm -f "$tmp"
+
+  if [[ "$http" =~ ^(200|201|204)$ ]]; then
+    echo "{\"ok\":true,\"http\":$http,\"prio\":$prio,\"url\":\"$url\",\"id\":\"$id\"}"
+  else
+    echo "{\"ok\":false,\"http\":$http,\"prio\":$prio,\"url\":\"$url\",\"id\":\"$id\",\"body\":\"${body//\"/\\\"}\"}"
+  fi
+}
+export -f worker
+
+: > "$RESULTS"
+
+# Build tab-separated lines: url <TAB> id <TAB> prio
+jq -r '.[] | [.url, .id, (.prio|tostring)] | @tsv' <<<"$MB_LIST" \
+| xargs -P "$FANOUT_PARALLEL" -n 1 -I {} bash -lc '
+  IFS=$'\''\t'\'' read -r url id prio <<< "$1"
+  worker "$url" "$id" "$prio"
+' _ {} >> "$RESULTS"
+
+# Summarize
+OKS="$(jq -s '[.[] | select(.ok==true)] | length' "$RESULTS")"
+FAILS="$(jq -s '[.[] | select(.ok==false)] | length' "$RESULTS")"
+echo "[send_fanout] ok=$OKS fail=$FAILS"
+jq -s '.' "$RESULTS"
+[[ "$OKS" -gt 0 ]] || exit 2

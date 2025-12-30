@@ -1,180 +1,162 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-die() { echo "❌ $*" >&2; exit 1; }
-need_cmd() { command -v "$1" >/dev/null || die "Missing required command: $1"; }
+die(){ echo "❌ $*" >&2; exit 1; }
+need(){ command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"; }
+
+need jq; need curl; need node; need python3
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ENS_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DIST_DIR="$ENS_DIR/dist"
-ENCRYPT_JS="$DIST_DIR/encrypt_to_contactcard.js"
 RESOLVE_JS="$DIST_DIR/resolve_verify.js"
-
-need_cmd jq
-need_cmd curl
-need_cmd node
-need_cmd python3
-
-[[ -f "$ENCRYPT_JS" ]] || die "Missing $ENCRYPT_JS (run: cd ens && npm i && npm run build)"
-[[ -f "$RESOLVE_JS" ]] || die "Missing $RESOLVE_JS (run: cd ens && npm i && npm run build)"
+ENCRYPT_JS="$DIST_DIR/encrypt_to_contactcard.js"
+[[ -f "$RESOLVE_JS" ]] || die "Missing $RESOLVE_JS"
+[[ -f "$ENCRYPT_JS" ]] || die "Missing $ENCRYPT_JS"
 
 NAME="${1:?usage: send_fanout.sh <ens_name> <message>}"
 PLAINTEXT="${2:?missing message}"
-FROM_HANDLE="${FROM_HANDLE:-alice.wspr.f3nixid.eth}"
-FANOUT_PARALLEL="${FANOUT_PARALLEL:-4}"          # max concurrent deposits
-FANOUT_MAX_MB="${FANOUT_MAX_MB:-0}"              # 0=all, else top N by prio
-MB_HTTP_TIMEOUT="${MB_HTTP_TIMEOUT:-15}"         # seconds
-# Validate DEPOSIT_TOKEN is base64url and decodes to 32 bytes
-MB_CONNECT_TIMEOUT="${MB_CONNECT_TIMEOUT:-5}"    # seconds
 
-# Optional expiry override: seconds from now. (Only used if set)
+FROM_HANDLE="${FROM_HANDLE:-alice.wspr.f3nixid.eth}"
+FANOUT_PARALLEL="${FANOUT_PARALLEL:-8}"
+FANOUT_MAX_MB="${FANOUT_MAX_MB:-2}"
+
+MB_HTTP_TIMEOUT="${MB_HTTP_TIMEOUT:-15}"
+MB_CONNECT_TIMEOUT="${MB_CONNECT_TIMEOUT:-5}"
 WHISPER_EXPIRES_IN_SEC="${WHISPER_EXPIRES_IN_SEC:-}"
 
 cd "$ENS_DIR"
-[[ -f .env ]] && { set -a; source .env; set +a; }
+if [[ -f .env ]]; then
+  set -a; . .env; set +a
+fi
 
 : "${RPC_URL:?missing RPC_URL}"
-: "${DEPOSIT_TOKEN:?missing DEPOSIT_TOKEN (out-of-band for MVP)}"
-
-python3 - <<'PY'
-import os, re, base64, sys
-t=os.environ.get("DEPOSIT_TOKEN","")
-if not t: print("DEPOSIT_TOKEN missing", file=sys.stderr); sys.exit(2)
-if re.search(r"[^A-Za-z0-9_-]", t): print("DEPOSIT_TOKEN contains non-base64url chars", file=sys.stderr); sys.exit(3)
-pad="="*((4-len(t)%4)%4)
-raw=base64.urlsafe_b64decode(t+pad)
-if len(raw)!=32: print(f"DEPOSIT_TOKEN must decode to 32 bytes (got {len(raw)})", file=sys.stderr); sys.exit(5)
-PY
+: "${DEPOSIT_TOKEN:?missing DEPOSIT_TOKEN}"
 
 echo "[send_fanout] name=$NAME"
 echo "[send_fanout] from=$FROM_HANDLE"
 echo "[send_fanout] parallel=$FANOUT_PARALLEL max_mb=$FANOUT_MAX_MB"
-MB_LIST_JSON="$(echo "$CARD_JSON" | jq -c --argjson n "$FANOUT_MAX_MB" '
 
-# Resolve + verify ENS pointer
+# --- resolve ---
 RESOLVE_JSON="$(node "$RESOLVE_JS" "$NAME")"
-OK="$(echo "$RESOLVE_JSON" | jq -r '.ok')"
-[[ "$OK" == "true" ]] || die "resolve_verify not ok"
-URI="$(echo "$RESOLVE_JSON" | jq -r '.uri')"
-[[ -n "$URI" && "$URI" != "null" ]] || die "missing uri from resolve_verify"
+jq -e . >/dev/null <<<"$RESOLVE_JSON" || die "resolve_verify returned non-JSON"
+[[ "$(jq -r '.ok' <<<"$RESOLVE_JSON")" == "true" ]] || { jq . <<<"$RESOLVE_JSON" >&2; die "resolve_verify not ok"; }
 
+URI="$(jq -r '.uri' <<<"$RESOLVE_JSON")"
+[[ -n "$URI" && "$URI" != "null" ]] || die "missing contactcard uri"
 echo "[send_fanout] contactcard uri=$URI"
 
-# Fetch contactcard
+# --- contactcard ---
 CARD_JSON="$(curl -fsSL "$URI")"
-HANDLE="$(echo "$CARD_JSON" | jq -r '.handle // empty')"
-[[ -n "$HANDLE" ]] || die "ContactCard missing .handle"
-MAILBOXES_COUNT="$(echo "$CARD_JSON" | jq '.mailboxes | length')"
-[[ "$MAILBOXES_COUNT" != "0" ]] || die "ContactCard has no mailboxes"
+[[ "$(jq '.mailboxes | length' <<<"$CARD_JSON")" -gt 0 ]] || die "ContactCard has no mailboxes"
 
-# Select mailboxes by prio desc, optionally truncate
-  .mailboxes
-  | sort_by(.prio)
-  | reverse
-  | (if ($n|tonumber) > 0 then .[0:($n|tonumber)] else . end)
-')"
+# --- select mailboxes ---
+if [[ "$FANOUT_MAX_MB" =~ ^[0-9]+$ ]] && [[ "$FANOUT_MAX_MB" -gt 0 ]]; then
+  MB_LIST="$(jq -c --argjson n "$FANOUT_MAX_MB" '.mailboxes | sort_by(.prio) | reverse | .[0:$n]' <<<"$CARD_JSON")"
+else
+  MB_LIST="$(jq -c '.mailboxes | sort_by(.prio) | reverse' <<<"$CARD_JSON")"
+fi
+echo "[send_fanout] mailboxes selected: $(jq 'length' <<<"$MB_LIST")"
 
-echo "[send_fanout] mailboxes selected: $(echo "$MB_LIST_JSON" | jq 'length')"
-
-# Build one encrypted envelope (same payload for all deposits)
-# Fresh msg id (16 bytes base64url, no '=')
-  url="$(echo "$mb_json" | jq -r '.url')"
+# --- temp files ---
 TMP_CARD="$(mktemp)"
 TMP_ENV="$(mktemp)"
-cleanup() { rm -f "$TMP_CARD" "$TMP_ENV"; }
-trap cleanup EXIT
+RESULTS="$(mktemp)"
+JOBDIR="$(mktemp -d)"
+trap 'rm -f "$TMP_CARD" "$TMP_ENV" "$RESULTS"; rm -rf "$JOBDIR"' EXIT
 
-echo "$CARD_JSON" > "$TMP_CARD"
+printf '%s' "$CARD_JSON" > "$TMP_CARD"
+
+# --- encrypt once ---
 node "$ENCRYPT_JS" "$TMP_CARD" "$NAME" "$FROM_HANDLE" "$PLAINTEXT" > "$TMP_ENV"
 
-MSG_ID="$(python3 - <<'PY'
-import os,base64
-print(base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip("="))
-PY
-)"
-export MSG_ID
-
-# Optional expires header
-EXTRA_EXPIRES_HEADER=()
+EXPIRES_AT=""
 if [[ -n "$WHISPER_EXPIRES_IN_SEC" ]]; then
-  [[ "$WHISPER_EXPIRES_IN_SEC" =~ ^[0-9]+$ ]] || die "WHISPER_EXPIRES_IN_SEC must be integer"
-  EXP=$(( $(date +%s) + WHISPER_EXPIRES_IN_SEC ))
-  EXTRA_EXPIRES_HEADER=(-H "X-Whisper-ExpiresAt: $EXP")
-  echo "[send_fanout] expires_at=$EXP override"
+  [[ "$WHISPER_EXPIRES_IN_SEC" =~ ^[0-9]+$ ]] || die "WHISPER_EXPIRES_IN_SEC must be integer seconds"
+  EXPIRES_AT="$(( $(date +%s) + WHISPER_EXPIRES_IN_SEC ))"
 fi
+echo "[send_fanout] expires_at=$EXPIRES_AT"
 
-# Fanout worker: deposit to one mailbox and emit JSON line result
-deposit_one() {
-  local mb_json="$1"
-  local url id prio
-  id="$(echo "$mb_json" | jq -r '.id')"
-  prio="$(echo "$mb_json" | jq -r '.prio')"
+MSG_ID="$(python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(16)).decode().rstrip("="))')"
+echo "[send_fanout] msg_id=$MSG_ID"
 
-  # Basic sanity
-  [[ -n "$url" && "$url" != "null" ]] || { echo "{\"ok\":false,\"err\":\"missing url\",\"prio\":$prio}" ; return 0; }
-    -X POST "$url/v1/mailboxes/$id/deposit" \
-  [[ -n "$id" && "$id" != "null" ]] || { echo "{\"ok\":false,\"err\":\"missing id\",\"prio\":$prio,\"url\":\"$url\"}" ; return 0; }
+worker() {
+  local url="$1"
+  local id="$2"
+  local prio="$3"
 
-  local tmp_out http
-  tmp_out="$(mktemp)"
-  http="$(curl -sS -o "$tmp_out" -w "%{http_code}" \
-    --connect-timeout "$MB_CONNECT_TIMEOUT" \
-    --max-time "$MB_HTTP_TIMEOUT" \
-    -H "Authorization: Bearer $DEPOSIT_TOKEN" \
-    -H "X-Whisper-MsgId: $MSG_ID" \
-    -H "Content-Type: application/octet-stream" \
-    "${EXTRA_EXPIRES_HEADER[@]}" \
-    --data-binary @"$TMP_ENV" || true
-  )"
+  if [[ -z "$url" || "$url" == "null" || -z "$id" || "$id" == "null" ]]; then
+    echo "{\"ok\":false,\"prio\":$prio,\"url\":\"$url\",\"id\":\"$id\",\"err\":\"missing url/id\"}"
+    return 0
+  fi
 
-  local body
-  body="$(cat "$tmp_out" 2>/dev/null || true)"
-  rm -f "$tmp_out"
+  local tmp http body
+  tmp="$(mktemp)"
 
-  # ok if 200/201/204
-  if [[ "$http" =~ ^(200|201|204)$ ]]; then
+  if [[ -n "$EXPIRES_AT" ]]; then
+    http="$(curl -sS -o "$tmp" -w "%{http_code}" \
+      --connect-timeout "$MB_CONNECT_TIMEOUT" --max-time "$MB_HTTP_TIMEOUT" \
+      -X POST "${url}/v1/mailboxes/${id}/deposit" \
+      -H "Authorization: Bearer ${DEPOSIT_TOKEN}" \
+      -H "X-Whisper-MsgId: ${MSG_ID}" \
+      -H "X-Whisper-ExpiresAt: ${EXPIRES_AT}" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @"${TMP_ENV}" || true)"
+  else
+    http="$(curl -sS -o "$tmp" -w "%{http_code}" \
+      --connect-timeout "$MB_CONNECT_TIMEOUT" --max-time "$MB_HTTP_TIMEOUT" \
+      -X POST "${url}/v1/mailboxes/${id}/deposit" \
+      -H "Authorization: Bearer ${DEPOSIT_TOKEN}" \
+      -H "X-Whisper-MsgId: ${MSG_ID}" \
+      -H "Content-Type: application/octet-stream" \
+      --data-binary @"${TMP_ENV}" || true)"
+  fi
+
+  body="$(head -c 200 "$tmp" | tr '\n\r' ' ')"
+  rm -f "$tmp"
+
+  if [[ "$http" =~ ^(200|201|204|409)$ ]]; then
     echo "{\"ok\":true,\"http\":$http,\"prio\":$prio,\"url\":\"$url\",\"id\":\"$id\"}"
   else
-    # shrink body to avoid huge logs
-    body="$(echo "$body" | head -c 300 | tr '\n' ' ' | tr '\r' ' ')"
-    done
     echo "{\"ok\":false,\"http\":$http,\"prio\":$prio,\"url\":\"$url\",\"id\":\"$id\",\"body\":\"${body//\"/\\\"}\"}"
   fi
 }
 
-export -f deposit_one
-export DEPOSIT_TOKEN MSG_ID TMP_ENV MB_CONNECT_TIMEOUT MB_HTTP_TIMEOUT
-export WHISPER_EXPIRES_IN_SEC
-# Bash can't export arrays; we only pass via env if needed (not critical)
+# --- run fanout with bash 3.2 compatible concurrency control ---
+# Build TSV lines: url \t id \t prio
+TSV="$(mktemp)"
+trap 'rm -f "$TSV"; rm -f "$TMP_CARD" "$TMP_ENV" "$RESULTS"; rm -rf "$JOBDIR"' EXIT
+jq -r '.[] | [.url, .id, (.prio|tostring)] | @tsv' <<<"$MB_LIST" > "$TSV"
 
-# Run deposits in parallel
-RESULTS="$(mktemp)"
-rm -f "$RESULTS"; : > "$RESULTS"
+job_count() { jobs -pr | wc -l | tr -d ' '; }
 
-# Produce one mailbox per line (compact json) and parallelize
-echo "$MB_LIST_JSON" | jq -c '.[]' | {
-  if command -v xargs >/dev/null; then
-    # Use xargs -P for parallel fanout
-    xargs -P "$FANOUT_PARALLEL" -I {} bash -lc 'deposit_one "$1"' _ {} >> "$RESULTS"
-  else
-    while read -r line; do
-      deposit_one "$line" >> "$RESULTS"
-  fi
-}
+i=0
+while IFS=$'\t' read -r url id prio; do
+  i=$((i+1))
+  out="$JOBDIR/out.$i.json"
+  (
+    # keep stdout pure JSON (no debug)
+    worker "$url" "$id" "$prio" > "$out"
+  ) &
 
-# Summary
-TOTAL="$(wc -l < "$RESULTS" | tr -d ' ')"
+  # throttle
+  while [[ "$(job_count)" -ge "$FANOUT_PARALLEL" ]]; do
+    sleep 0.05
+  done
+done < "$TSV"
+
+wait
+
+# concatenate results deterministically
+: > "$RESULTS"
+for f in "$JOBDIR"/out.*.json; do
+  [[ -f "$f" ]] && cat "$f" >> "$RESULTS"
+done
+
+# summary
 OKS="$(jq -s '[.[] | select(.ok==true)] | length' "$RESULTS")"
 FAILS="$(jq -s '[.[] | select(.ok==false)] | length' "$RESULTS")"
-
-echo
-echo "[send_fanout] msg_id=$MSG_ID"
-echo "[send_fanout] total=$TOTAL ok=$OKS fail=$FAILS"
-echo
-
-# Print results as JSON array (CI-friendly)
+echo "[send_fanout] ok=$OKS fail=$FAILS"
 jq -s '.' "$RESULTS"
-rm -f "$RESULTS"
 
-# Exit non-zero if all failed
 [[ "$OKS" -gt 0 ]] || exit 2

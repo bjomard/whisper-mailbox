@@ -1,0 +1,23 @@
+{
+  "name": "f3nix-ens-tools",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "provision": "node --loader ts-node/esm scripts/provision_wspr_subdomain.ts",
+    "publish": "node --loader ts-node/esm scripts/publish_pointer.ts",
+    "resolve": "node --loader ts-node/esm scripts/resolve_verify.ts",
+    "canon": "node --loader ts-node/esm scripts/canonicalize_json.ts",
+    "sign": "node --loader ts-node/esm scripts/sign_profile.ts"
+  },
+  "dependencies": {
+    "ethers": "^6.13.0",
+    "libsodium-wrappers": "^0.7.15",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
+  }
+}

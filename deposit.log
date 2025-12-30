@@ -1,0 +1,102 @@
+openapi/mailbox_v0.1.yaml:26:  /v1/mailboxes/{mailbox_id}/deposit-tokens:
+openapi/mailbox_v0.1.yaml:28:      summary: Register deposit tokens for a mailbox (owner only)
+openapi/mailbox_v0.1.yaml:47:  /v1/mailboxes/{mailbox_id}/deposit:
+openapi/mailbox_v0.1.yaml:131:      summary: Revoke deposit tokens by hashed values (owner only)
+openapi/mailbox_v0.1.yaml:197:        deposit_tokens:
+openapi/mailbox_v0.1.yaml:201:      required: [deposit_tokens]
+openapi/mailbox_v0.1.yaml:254:        deposit_token_hashes:
+openapi/mailbox_v0.1.yaml:258:      required: [deposit_token_hashes]
+docs/mailbox_v0.1.md:25:- `deposit_token`: write capability (shared per contact)
+docs/mailbox_v0.1.md:33:- `deposit_tokens(mailbox_id, dep_hash, revoked)`
+docs/mailbox_v0.1.md:41:### POST /v1/mailboxes/{mailbox_id}/deposit-tokens
+docs/mailbox_v0.1.md:42:Register deposit tokens for a mailbox (owner-only). Idempotent. Server stores only hashed tokens.
+docs/mailbox_v0.1.md:44:### POST /v1/mailboxes/{mailbox_id}/deposit
+docs/mailbox_v0.1.md:45:Deposit an encrypted blob into recipient mailbox (requires `deposit_token`).
+docs/mailbox_v0.1.md:48:- `Authorization: Bearer <deposit_token>`
+docs/mailbox_v0.1.md:64:Revoke deposit tokens by providing their hashed values (requires `poll_token`).
+docs/mailbox_v0.1.md:74:- Server: `UNIQUE(mailbox_id, msg_id)` enables idempotent deposits (`409` on duplicate)
+docs/mailbox_v0.1.md:79:- Sender deposits to primary; fallback or parallel deposit to secondary nodes.
+src/main.rs:96:            "/v1/mailboxes/:mailbox_id/deposit-tokens",
+src/main.rs:97:            post(register_deposit_tokens),
+src/main.rs:99:        .route("/v1/mailboxes/:mailbox_id/deposit", post(deposit))
+src/main.rs:293:    deposit_tokens: Vec<String>, // base64url(32 bytes)
+src/main.rs:301:async fn register_deposit_tokens(
+src/main.rs:328:    if req.deposit_tokens.is_empty() || req.deposit_tokens.len() > 5000 {
+src/main.rs:335:    for t in req.deposit_tokens {
+src/main.rs:343:            "INSERT OR IGNORE INTO deposit_tokens (mailbox_id, dep_hash, revoked, created_at) VALUES (?, ?, 0, ?)",
+src/main.rs:384:async fn deposit(
+src/main.rs:394:    // Auth deposit token
+src/main.rs:415:        "SELECT revoked FROM deposit_tokens WHERE mailbox_id = ? AND dep_hash = ?",
+src/main.rs:644:    deposit_token_hashes: Vec<String>, // base64url(32 bytes)
+src/main.rs:680:    if req.deposit_token_hashes.is_empty() || req.deposit_token_hashes.len() > 1000 {
+src/main.rs:685:    for h in req.deposit_token_hashes {
+src/main.rs:691:            "UPDATE deposit_tokens SET revoked = 1 WHERE mailbox_id = ? AND dep_hash = ?",
+src/main.rs.old:92:        .route("/v1/mailboxes/:mailbox_id/deposit-tokens", post(register_deposit_tokens))
+src/main.rs.old:93:        .route("/v1/mailboxes/:mailbox_id/deposit", post(deposit))
+src/main.rs.old:279:    deposit_tokens: Vec<String>, // base64url(32 bytes)
+src/main.rs.old:287:async fn register_deposit_tokens(
+src/main.rs.old:312:    if req.deposit_tokens.is_empty() || req.deposit_tokens.len() > 5000 {
+src/main.rs.old:319:    for t in req.deposit_tokens {
+src/main.rs.old:327:            "INSERT OR IGNORE INTO deposit_tokens (mailbox_id, dep_hash, revoked, created_at) VALUES (?, ?, 0, ?)"
+src/main.rs.old:368:async fn deposit(
+src/main.rs.old:378:    // Auth deposit token
+src/main.rs.old:399:        "SELECT revoked FROM deposit_tokens WHERE mailbox_id = ? AND dep_hash = ?",
+src/main.rs.old:611:    deposit_token_hashes: Vec<String>, // base64url(32 bytes)
+src/main.rs.old:645:    if req.deposit_token_hashes.is_empty() || req.deposit_token_hashes.len() > 1000 {
+src/main.rs.old:650:    for h in req.deposit_token_hashes {
+src/main.rs.old:655:        let res = sqlx::query("UPDATE deposit_tokens SET revoked = 1 WHERE mailbox_id = ? AND dep_hash = ?")
+openapi/mailbox_v0.1.yaml:26:  /v1/mailboxes/{mailbox_id}/deposit-tokens:
+openapi/mailbox_v0.1.yaml:28:      summary: Register deposit tokens for a mailbox (owner only)
+openapi/mailbox_v0.1.yaml:131:      summary: Revoke deposit tokens by hashed values (owner only)
+openapi/mailbox_v0.1.yaml:168:        poll_token:
+openapi/mailbox_v0.1.yaml:186:        poll_token:
+openapi/mailbox_v0.1.yaml:197:        deposit_tokens:
+openapi/mailbox_v0.1.yaml:200:          description: base64url(32 bytes) tokens
+openapi/mailbox_v0.1.yaml:201:      required: [deposit_tokens]
+openapi/mailbox_v0.1.yaml:254:        deposit_token_hashes:
+openapi/mailbox_v0.1.yaml:258:      required: [deposit_token_hashes]
+docs/mailbox_v0.1.md:9:- Anti-spam by capability tokens
+docs/mailbox_v0.1.md:23:### Capability tokens
+docs/mailbox_v0.1.md:24:- `poll_token`: read capability (owner-only)
+docs/mailbox_v0.1.md:25:- `deposit_token`: write capability (shared per contact)
+docs/mailbox_v0.1.md:29:Server stores only HMAC(server_secret, token) hashes.
+docs/mailbox_v0.1.md:33:- `deposit_tokens(mailbox_id, dep_hash, revoked)`
+docs/mailbox_v0.1.md:39:Create a mailbox. Client may provide its own poll_token or let server generate one.
+docs/mailbox_v0.1.md:41:### POST /v1/mailboxes/{mailbox_id}/deposit-tokens
+docs/mailbox_v0.1.md:42:Register deposit tokens for a mailbox (owner-only). Idempotent. Server stores only hashed tokens.
+docs/mailbox_v0.1.md:45:Deposit an encrypted blob into recipient mailbox (requires `deposit_token`).
+docs/mailbox_v0.1.md:48:- `Authorization: Bearer <deposit_token>`
+docs/mailbox_v0.1.md:56:Poll messages (requires `poll_token`).
+docs/mailbox_v0.1.md:61:Acknowledge / delete messages by msg_id (requires `poll_token`).
+docs/mailbox_v0.1.md:64:Revoke deposit tokens by providing their hashed values (requires `poll_token`).
+docs/mailbox_v0.1.md:71:- Rate limits: per token and per IP (implementation-specific)
+docs/mailbox_v0.1.md:91:- uses HMAC-SHA256 to hash tokens
+src/main.rs:96:            "/v1/mailboxes/:mailbox_id/deposit-tokens",
+src/main.rs:97:            post(register_deposit_tokens),
+src/main.rs:164:fn bearer_token(headers: &HeaderMap) -> Result<String, ApiError> {
+src/main.rs:174:fn hmac_hash(server_secret: &[u8], token: &[u8]) -> Vec<u8> {
+src/main.rs:176:    mac.update(token);
+src/main.rs:232:    poll_token: Option<String>,
+src/main.rs:245:    poll_token: Option<String>,
+src/main.rs:256:    let (poll_token, poll_hash) = match req.poll_token {
+src/main.rs:267:            let token_b64 = b64url_encode(&raw);
+src/main.rs:268:            (Some(token_b64), hmac_hash(&state.server_secret, &raw))
+src/main.rs:282:        poll_token,
+src/main.rs:293:    deposit_tokens: Vec<String>, // base64url(32 bytes)
+src/main.rs:301:async fn register_deposit_tokens(
+src/main.rs:307:    let token = bearer_token(&headers)?;
+src/main.rs:308:    let token_raw = b64url_decode(&token)?;
+src/main.rs:309:    if token_raw.len() != 32 {
+src/main.rs:312:    let poll_hash = hmac_hash(&state.server_secret, &token_raw);
+src/main.rs:328:    if req.deposit_tokens.is_empty() || req.deposit_tokens.len() > 5000 {
+src/main.rs:335:    for t in req.deposit_tokens {
+src/main.rs:343:            "INSERT OR IGNORE INTO deposit_tokens (mailbox_id, dep_hash, revoked, created_at) VALUES (?, ?, 0, ?)",
+src/main.rs:394:    // Auth deposit token
+src/main.rs:395:    let token = bearer_token(&headers)?;
+src/main.rs:396:    let token_raw = b64url_decode(&token)?;
+src/main.rs:397:    if token_raw.len() != 32 {
+openapi/mailbox_v0.1.yaml:41:          description: Tokens registered
+src/main.rs:97:            post(register_deposit_tokens),
+src/main.rs:301:async fn register_deposit_tokens(
+src/main.rs.old:92:        .route("/v1/mailboxes/:mailbox_id/deposit-tokens", post(register_deposit_tokens))
+src/main.rs.old:287:async fn register_deposit_tokens(

@@ -1,0 +1,18 @@
+Utilisation
+
+Depuis ens/ :
+
+cd /Users/bjomard/F3NIX-Whisper/whisper-mailbox/ens
+./scripts/publish_bob_profile.sh
+
+
+Variantes :
+
+# autre profil (ex: alice.json) + autre nom ENS
+./scripts/publish_bob_profile.sh alice alice.wspr.f3nixid.eth
+
+# override URI (si tu changes le chemin GitHub Pages)
+./scripts/publish_bob_profile.sh bob bob.wspr.f3nixid.eth "https://bjomard.github.io/whisper-mailbox/profiles/bob.canon.json"
+
+# éviter un publish_pointer qui “reste bloqué” (timeout 60s)
+PUBLISH_TIMEOUT_SEC=60 ./scripts/publish_bob_profile.sh

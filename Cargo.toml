@@ -25,3 +25,5 @@ sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio", "macros", "migr
 
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+dotenvy = "0.15"
