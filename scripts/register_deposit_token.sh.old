@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+MB_URL="${MB_URL:-http://localhost:8080}"
+MAILBOX_ID="${MAILBOX_ID:?export MAILBOX_ID=...}"
+POLL_TOKEN="${POLL_TOKEN:?export POLL_TOKEN=... (owner token from create mailbox)}"
+
+echo "Registering deposit token for mailbox=$MAILBOX_ID on $MB_URL ..."
+
+NEW_DEPOSIT_TOKEN="$(python3 - <<'PY'
+import os,base64
+print(base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("="))
+PY
+)"
+
+PAYLOAD="$(jq -cn --arg t "$NEW_DEPOSIT_TOKEN" '{deposit_tokens:[$t]}')"
+
+TMP_OUT="$(mktemp)"
+HTTP="$(curl -s -o "$TMP_OUT" -w "%{http_code}" \
+  -X POST "$MB_URL/v1/mailboxes/$MAILBOX_ID/deposit-tokens" \
+  -H "Authorization: Bearer $POLL_TOKEN" \
+  -H "Content-Type: application/json" \
+  --data "$PAYLOAD")"
+
+BODY="$(cat "$TMP_OUT" || true)"
+rm -f "$TMP_OUT"
+
+if [[ "$HTTP" != "200" && "$HTTP" != "204" ]]; then
+  echo "ERROR: register deposit token failed (HTTP $HTTP)" >&2
+  echo "$BODY" | (command -v jq >/dev/null && jq || cat) >&2
+  exit 1
+fi
+
+export DEPOSIT_TOKEN="$NEW_DEPOSIT_TOKEN"
+echo "OK. Exported DEPOSIT_TOKEN (share it with sender out-of-band for MVP)."
+echo "DEPOSIT_TOKEN=$DEPOSIT_TOKEN"

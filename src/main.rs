@@ -34,6 +34,7 @@ struct AppState {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -368,10 +369,13 @@ fn header_msg_id(headers: &HeaderMap) -> Result<Vec<u8>, ApiError> {
 }
 
 fn header_expires_at(headers: &HeaderMap) -> Option<i64> {
-    headers
+    // Accept both spellings
+    let v = headers
         .get("x-whisper-expiresat")
-        .and_then(|h| h.to_str().ok())
-        .and_then(|s| s.parse().ok())
+        .or_else(|| headers.get("x-whisper-expires-at"))
+        .and_then(|h| h.to_str().ok())?;
+
+    v.parse::<i64>().ok()
 }
 
 #[derive(Serialize)]
@@ -434,6 +438,7 @@ async fn deposit(
         expires_at = max_expires;
     }
     if expires_at <= now {
+        tracing::warn!(expires_at, now, "deposit invalid expires_at");
         return Err(ApiError::InvalidInput);
     }
 

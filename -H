@@ -1,0 +1,6 @@
+HTTP/1.1 401 Unauthorized
+content-type: application/json
+content-length: 24
+date: Mon, 22 Dec 2025 14:36:28 GMT
+
+{"error":"unauthorized"}

@@ -1,0 +1,10 @@
+import fs from "node:fs";
+import { canonicalStringify } from "./_canonical_json.js";
+const file = process.argv[2];
+if (!file) {
+    console.error("Usage: canonicalize_json.ts <input.json>");
+    process.exit(2);
+}
+const raw = fs.readFileSync(file, "utf8");
+const obj = JSON.parse(raw);
+process.stdout.write(canonicalStringify(obj));

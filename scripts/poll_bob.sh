@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Resolve repo root (works even if script is symlinked)
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+ENS_DIST="$REPO_ROOT/ens/dist"
+DECRYPT_JS="$ENS_DIST/decrypt_envelope.js"
+
+if [[ ! -f "$DECRYPT_JS" ]]; then
+  echo "❌ decrypt_envelope.js not found at $DECRYPT_JS" >&2
+  echo "Have you run: (cd ens && npm run build) ?" >&2
+  exit 1
+fi
+
 MB_URL="${MB_URL:-http://localhost:8080}"
 MAILBOX_ID="${MAILBOX_ID:?export MAILBOX_ID=...}"
 POLL_TOKEN="${POLL_TOKEN:?export POLL_TOKEN=...}"
@@ -14,32 +27,36 @@ FIRST="$(curl -fsSL "$MB_URL/v1/mailboxes/$MAILBOX_ID/poll" \
 
 echo "$FIRST" | jq
 
-# msg_ids as JSON array string
 MSG_IDS_JSON="$(echo "$FIRST" | jq -c '[.messages[].msg_id]')"
-
 if [[ "$MSG_IDS_JSON" == "[]" ]]; then
   echo "No message."
   exit 0
 fi
 
-# decode first message
 B64="$(echo "$FIRST" | jq -r '.messages[0].blob_b64 // ""')"
 
 echo
-echo "Decoded first message:"
-python3 - <<PY
-import base64
-b64 = """$B64""".strip()
+echo "Decoded first message (raw bytes):"
+RAW="$(printf '%s' "$B64" | python3 - <<'PY'
+import sys, base64
+b64 = sys.stdin.read().strip()
 if not b64:
-    print("(empty)")
-else:
-    print(base64.b64decode(b64).decode("utf-8", errors="replace"))
+    sys.exit(0)
+sys.stdout.write(base64.b64decode(b64).decode("utf-8", errors="replace"))
 PY
+)"
+echo "$RAW"
 
-# Ack all msg_ids
+echo
+echo "If envelope detected, try E2E decrypt:"
+if echo "$RAW" | jq -e '.alg=="x25519-sealedbox" and .ct_b64!=null' >/dev/null 2>&1; then
+  : "${WSPR_X25519_SK_B64U:?Missing WSPR_X25519_SK_B64U (Bob secret key, base64url)}"
+  echo "$RAW" | WSPR_X25519_SK_B64U="$WSPR_X25519_SK_B64U" node "$DECRYPT_JS" - \
+    || echo "(decrypt failed)"
+fi
+
 echo
 echo "Acking msg_ids=$MSG_IDS_JSON"
-
 ACK_PAYLOAD="$(jq -cn --argjson ids "$MSG_IDS_JSON" '{msg_ids:$ids}')"
 
 TMP_OUT="$(mktemp)"
