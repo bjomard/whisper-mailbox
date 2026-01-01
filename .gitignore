@@ -4,3 +4,46 @@
 *.db-shm
 .env
 .DS_Store
+/ens/.env
+
+# env / secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/*.pem
+**/*.key
+**/*secret*
+**/*private*
+**/*mnemonic*
+**/*wallet*
+
+# logs / db
+*.log
+*.db
+*.db-wal
+*.db-shm
+
+# node
+node_modules/
+
+# build
+dist/
+target/
+
+
+# Secrets / env (NEVER COMMIT)
+.env
+.env.*
+*.bak
+*secret*
+*private*key*
+*mnemonic*
+*seed*
+*wallet*
+
+# Node deps
+**/node_modules/
+
+# Local DB / runtime artifacts
+mailbox.db*
