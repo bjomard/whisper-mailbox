@@ -1,7 +1,17 @@
 import { ethers } from "ethers";
 import { ENS_REGISTRY_ABI, ENS_REGISTRY_ADDR, RESOLVER_ABI, KEYS } from "./_ens_abis.js";
 
+const COMPROMISED = "0x521CbC77196B7B69A9d3D8c7e3D50887e7046Bad".toLowerCase();
 const name = process.argv[2];
+const WS = {
+  ver: "f3nix.wspr.ver",
+  uri: "f3nix.wspr.uri",
+  sha256: "f3nix.wspr.sha256",
+  sig: "f3nix.wspr.sig",
+  signer: "f3nix.wspr.signer",
+  publisher: "f3nix.wspr.publisher",
+};
+
 if (!name) {
   console.error("Usage: resolve_verify.ts <name>");
   process.exit(2);
@@ -23,11 +33,20 @@ if (!resolverAddr || resolverAddr === ethers.ZeroAddress) {
 }
 
 const resolver = new ethers.Contract(resolverAddr, RESOLVER_ABI, provider);
-const ver = await resolver.text(node, KEYS.ver);
-const uri = await resolver.text(node, KEYS.uri);
-const sha256 = await resolver.text(node, KEYS.sha256);
-const sig = await resolver.text(node, KEYS.sig);
-const signer = await resolver.text(node, KEYS.signer);
+
+const ver = (await resolver.text(node, WS.ver)) || (await resolver.text(node, KEYS.ver));
+const uri = (await resolver.text(node, WS.uri)) || (await resolver.text(node, KEYS.uri));
+const sha256 = (await resolver.text(node, WS.sha256)) || (await resolver.text(node, KEYS.sha256));
+const sig = (await resolver.text(node, WS.sig)) || (await resolver.text(node, KEYS.sig));
+const signer = (await resolver.text(node, WS.signer)) || (await resolver.text(node, KEYS.signer));
+const publisher = (await resolver.text(node, WS.publisher)) || "";
+
+//const resolver = new ethers.Contract(resolverAddr, RESOLVER_ABI, provider);
+//const ver = await resolver.text(node, KEYS.ver);
+//const uri = await resolver.text(node, KEYS.uri);
+//const sha256 = await resolver.text(node, KEYS.sha256);
+//const sig = await resolver.text(node, KEYS.sig);
+//const signer = await resolver.text(node, KEYS.signer);
 
 if (ver !== "1") throw new Error(`Unsupported ver='${ver}'`);
 if (!uri) throw new Error("Missing uri");

@@ -45,6 +45,22 @@ function mustKeyTypeFromSpkiB64u(
 }
 
 function validateContactCard(card: any) {
+  // v1 schema support
+  if (card?.type === "whisper.contact_card") {
+    if (typeof card.subject !== "string" || !card.subject.length) {
+      throw new Error("ContactCard.subject: expected non-empty string");
+    }
+    if (!card.root_identity || typeof card.root_identity !== "object") {
+      throw new Error("ContactCard.root_identity: expected object");
+    }
+    if (typeof card.root_identity.fingerprint !== "string" || !card.root_identity.fingerprint.length) {
+      throw new Error("ContactCard.root_identity.fingerprint: expected non-empty string");
+    }
+    if (!Array.isArray(card.mailboxes)) {
+      throw new Error("ContactCard.mailboxes: expected array");
+    }
+    return;
+  }
   if (!card || typeof card !== "object") throw new Error("ContactCard: not an object");
   if (card.v !== 1) throw new Error(`ContactCard.v: expected 1, got ${card.v}`);
   if (card.service !== "whisper") throw new Error(`ContactCard.service: expected "whisper", got ${card.service}`);

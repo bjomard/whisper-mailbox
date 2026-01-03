@@ -1,5 +1,3 @@
-Voici une **section README prête à copier-coller**, orientée **exécution réelle**, en **2 terminaux**, sans ambiguïté Alice/Bob, cohérente avec ce que tu as déjà implémenté.
-
 ---
 
 # 🚀 Quickstart — ENS Demo (Alice ↔ Bob)

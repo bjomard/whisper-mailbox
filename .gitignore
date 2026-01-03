@@ -47,3 +47,10 @@ target/
 
 # Local DB / runtime artifacts
 mailbox.db*
+
+# local: contactcards is its own repo
+/contactcards/
+
+# build artifacts
+/ens/dist/
+/ens/dist-old/
