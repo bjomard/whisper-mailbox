@@ -54,3 +54,21 @@ mailbox.db*
 # build artifacts
 /ens/dist/
 /ens/dist-old/
+
+# contactcards is a separate repo (GitHub Pages)
+/contactcards/
+
+# local backups / patches
+ens/profiles_legacy/
+ens/*.patch
+ens_patch.diff
+ens/scripts/*.bak*
+ens/scripts/delegation_body.json
+ens/scripts/sign_delegation.js
+ens/scripts/hash_delegation.js
+
+# contactcards is a separate repo (GitHub Pages)
+/contactcards/
+
+# contactcards is a separate repo (GitHub Pages)
+/contactcards/
