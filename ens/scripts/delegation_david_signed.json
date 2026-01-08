@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "t": "del",
+  "iss": "eip155:1:0x9835687c0ec5228913a79fcfc11f6ac0712de7bb",
+  "sub": "spki:ed25519:8zeRyR-mG1dGSgZQN8PwPS_7k5TrbSnfz5_MtsRIHMc",
+  "scp": "whisper",
+  "nbf": 1767225600,
+  "exp": 1798761600,
+  "h": "sha256:a03dc31e32b20a9b741973f548fa23897b5595b21f9a99a5911d948880f281d7",
+  "sig": "eip191:0x591d06d6a01584f167d64967515daaeda5f9f9e138cd7d622b0c91acc8f990f8513b4a4af3b423adcd12dbd9837d12a3d39340c417043c989b784b091caa83291c"
+}

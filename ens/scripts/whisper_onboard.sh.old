@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ===== helpers =====
+need() { command -v "$1" >/dev/null 2>&1 || { echo "❌ missing command: $1" >&2; exit 127; }; }
+die() { echo "❌ $*" >&2; exit 2; }
+
+need jq
+need git
+need node
+need curl
+need npm
+need cast
+need shasum
+
+# ===== locate dirs =====
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+ENS_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"          # .../whisper-mailbox/ens
+ROOT_DIR="$(cd -- "$ENS_DIR/.." && pwd)"            # .../whisper-mailbox
+CONTACTCARDS_DIR="${CONTACTCARDS_DIR:-$ROOT_DIR/contactcards}"  # separate repo
+
+# ===== inputs =====
+ALIAS="${1:-}"
+[[ -n "$ALIAS" ]] || die "Usage: whisper_onboard.sh <alias> [pubkeys.json]"
+
+# allow reuse if name already exists and is owned by our publisher
+REUSE_EXISTING="${REUSE_EXISTING:-0}"
+
+PUBKEYS_FILE="${2:-}"  # optional; if omitted, we'll require env vars with pub keys
+
+ZONE="${ZONE:-wspr.f3nixid.eth}"
+NAME="${ALIAS}.${ZONE}"
+
+# ===== env (RPC + keys) =====
+RPC="${RPC_URL:-${ETH_RPC_URL:-}}"
+[[ -n "$RPC" ]] || die "Missing RPC_URL (or ETH_RPC_URL)"
+
+ENS_REGISTRY="${ENS_REGISTRY:-0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e}"
+
+# Publisher (hot key) signs ENS pointer (sig over sha256)
+PUBLISHER_PRIVATE_KEY="${PUBLISHER_PRIVATE_KEY:-${SIGNER_PRIVATE_KEY:-}}"
+[[ -n "$PUBLISHER_PRIVATE_KEY" ]] || die "Missing PUBLISHER_PRIVATE_KEY (or SIGNER_PRIVATE_KEY)"
+
+# Root signer = cold identity address (Ledger). Used only as identity anchor + delegation issuer.
+ROOT_SIGNER="${ROOT_SIGNER:-}"
+[[ -n "$ROOT_SIGNER" ]] || die "Missing ROOT_SIGNER (0x...)"
+
+# Delegation object signed by ROOT_SIGNER (rare). Must be provided (file).
+DELEGATION_FILE="${DELEGATION_FILE:-$ENS_DIR/scripts/delegation_signed.json}"
+if [[ -f "$DELEGATION_FILE" && -s "$DELEGATION_FILE" ]]; then
+  HAVE_DELEGATION=1
+else
+  HAVE_DELEGATION=0
+  echo "    note: no delegation file (missing or empty) → will omit delegation in ContactCard"
+fi
+
+
+# Where we publish JSON (GitHub Pages)
+PAGES_BASE="${PAGES_BASE:-https://bjomard.github.io/ContactCards}"
+REL_PATH="wspr/${ALIAS}/${ALIAS}.min.json"
+URI="${URI:-${PAGES_BASE}/${REL_PATH}}"
+
+# Default mailbox list (Tier C OK). Override with MAILBOX_URLS="https://mb1,https://mb2"
+MAILBOX_URLS="${MAILBOX_URLS:-https://example-mailbox.f3nix.dev}"
+MAILBOX_ID="${MAILBOX_ID:-default}"
+MAILBOX_PRIO="${MAILBOX_PRIO:-100}"
+
+# ===== read user pubkeys =====
+# Either provide PUBKEYS_FILE containing:
+# { "ed25519_spki_b64u":"...", "x25519_spki_b64u":"..." }
+# or set env ED25519_SPKI_B64U / X25519_SPKI_B64U
+if [[ -n "$PUBKEYS_FILE" ]]; then
+  [[ -f "$PUBKEYS_FILE" ]] || die "pubkeys.json not found: $PUBKEYS_FILE"
+  ED25519_SPKI_B64U="$(jq -r '.ed25519_spki_b64u' "$PUBKEYS_FILE")"
+  X25519_SPKI_B64U="$(jq -r '.x25519_spki_b64u' "$PUBKEYS_FILE")"
+else
+  ED25519_SPKI_B64U="${ED25519_SPKI_B64U:-}"
+  X25519_SPKI_B64U="${X25519_SPKI_B64U:-}"
+fi
+
+[[ -n "$ED25519_SPKI_B64U" && "$ED25519_SPKI_B64U" != "null" ]] || die "Missing ed25519_spki_b64u (pubkeys.json or env ED25519_SPKI_B64U)"
+[[ -n "$X25519_SPKI_B64U" && "$X25519_SPKI_B64U" != "null" ]] || die "Missing x25519_spki_b64u (pubkeys.json or env X25519_SPKI_B64U)"
+
+# ===== step 1: ENS availability =====
+echo "[1] Check availability: $NAME"
+NODE="$(cast namehash "$NAME")"
+OWNER="$(cast call --rpc-url "$RPC" "$ENS_REGISTRY" "owner(bytes32)(address)" "$NODE")"
+
+PUB_ADDR="$(cast wallet address --private-key "$PUBLISHER_PRIVATE_KEY")"
+
+# bash 3.2 compatible lowercase
+owner_lc="$(printf '%s' "$OWNER" | tr '[:upper:]' '[:lower:]')"
+pub_lc="$(printf '%s' "$PUB_ADDR" | tr '[:upper:]' '[:lower:]')"
+
+if [[ "$OWNER" == "0x0000000000000000000000000000000000000000" ]]; then
+  echo "    ok: available"
+else
+  if [[ "$REUSE_EXISTING" == "1" && "$owner_lc" == "$pub_lc" ]]; then
+    echo "    note: already owned by publisher ($PUB_ADDR) → reuse mode"
+  else
+    die "ENS name already owned: $NAME owner=$OWNER (set REUSE_EXISTING=1 if owned by publisher=$PUB_ADDR)"
+  fi
+fi
+
+# ===== step 2: provision subdomain (optional) =====
+# If your provision script creates the subdomain under the wrapped zone, keep it.
+# If not needed (already auto-provisioned), set SKIP_PROVISION=1.
+if [[ "${SKIP_PROVISION:-0}" != "1" ]]; then
+  echo "[2] Provision subdomain (npm run provision -- $ALIAS)"
+  ( cd "$ENS_DIR" && npm run -s provision -- "$ALIAS" )
+else
+  echo "[2] Provision skipped (SKIP_PROVISION=1)"
+fi
+
+# ===== step 3: build ContactCard source JSON =====
+echo "[3] Build ContactCard JSON (source)"
+TMP_DIR="$(mktemp -d)"
+SRC_JSON="$TMP_DIR/${ALIAS}.json"
+CANON_JSON="$TMP_DIR/${ALIAS}.canon.json"
+MIN_JSON="$TMP_DIR/${ALIAS}.min.json"
+
+# fingerprint conventions
+#ROOT_FP="eip155:1:${ROOT_SIGNER,,}"
+ROOT_FP="eip155:1:$(printf '%s' "$ROOT_SIGNER" | tr '[:upper:]' '[:lower:]')"
+
+# user usage fp (simple: embed ed25519 spki; your code already uses this style)
+USAGE_FP="spki:ed25519:${ED25519_SPKI_B64U}"
+
+# build mailboxes array from MAILBOX_URLS (comma-separated)
+MAILBOXES_JSON="$(python3 - <<'PY'
+import os, json
+urls=os.environ["MAILBOX_URLS"].split(",")
+mid=os.environ.get("MAILBOX_ID","default")
+prio=int(os.environ.get("MAILBOX_PRIO","100"))
+out=[]
+for i,u in enumerate(urls):
+    out.append({"url":u.strip(),"id":mid,"prio":prio - i*10})
+print(json.dumps(out))
+PY
+)"
+
+# build ContactCard
+jq -n \
+  --arg name "$NAME" \
+  --arg root_addr "$ROOT_SIGNER" \
+  --arg root_fp "$ROOT_FP" \
+  --arg ed "$ED25519_SPKI_B64U" \
+  --arg x "$X25519_SPKI_B64U" \
+  --arg usage_fp "$USAGE_FP" \
+  --argjson mailboxes "$MAILBOXES_JSON" \
+'{
+  v: 1,
+  type: "whisper.contact_card",
+  service: "whisper",
+
+  name: $name,
+  subject: $name,
+  fingerprint: $root_fp,
+
+  profile: { scope: "whisper", min_security_tier: "C" },
+
+  root_identity: {
+    alg: "secp256k1_eip191",
+    chain: "eip155:1",
+    address: $root_addr,
+    fingerprint: $root_fp
+  },
+
+  usage_identity: {
+    alg: "ed25519+x25519",
+    pub: {
+      x25519_spki_b64u: $x,
+      ed25519_spki_b64u: $ed
+    },
+    fingerprint: $usage_fp
+  },
+
+  card: { version: 1, updated_at: (now|floor) },
+
+  mailboxes: $mailboxes,
+  capabilities: { multi_mailbox: false, pow: false, nfc_pairing: false }
+}' > "$SRC_JSON"
+
+if [[ "$HAVE_DELEGATION" == "1" ]]; then
+  DELEG_HASH="$(DELEGATION_FILE="$DELEGATION_FILE" node - <<'NODE'
+import { ethers } from "ethers";
+import fs from "fs";
+
+const path = process.env.DELEGATION_FILE;
+const raw = fs.readFileSync(path, "utf8").trim();
+if (!raw) { console.log(""); process.exit(0); }
+
+const obj = JSON.parse(raw);
+const txt = JSON.stringify(obj);
+console.log(ethers.sha256(ethers.toUtf8Bytes(txt)));
+NODE
+)"
+
+  if [[ -n "$DELEG_HASH" ]]; then
+    jq --arg h "$DELEG_HASH" --slurpfile delegation "$DELEGATION_FILE" \
+      '.delegation = { object: $delegation[0], ref: ("sha256:" + $h) }' \
+      "$SRC_JSON" > "$SRC_JSON.tmp" && mv "$SRC_JSON.tmp" "$SRC_JSON"
+    echo "    delegation hash: $DELEG_HASH"
+  else
+    echo "    note: delegation file empty → delegation omitted"
+  fi
+fi
+
+echo "    src: $SRC_JSON"
+
+# ===== step 4: canonicalize + minify =====
+echo "[4] Canonicalize + minify"
+( cd "$ENS_DIR" && npm run -s canon -- "$SRC_JSON" ) > "$CANON_JSON"
+jq -c . "$CANON_JSON" > "$MIN_JSON"
+
+jq -e . "$MIN_JSON" >/dev/null || die "MIN JSON invalid"
+echo "    ok: minified"
+
+# ===== step 5: publish JSON to contactcards repo =====
+echo "[5] Publish JSON to contactcards repo"
+[[ -d "$CONTACTCARDS_DIR/.git" ]] || die "CONTACTCARDS_DIR is not a git repo: $CONTACTCARDS_DIR"
+
+DST_DIR="$CONTACTCARDS_DIR/wspr/$ALIAS"
+mkdir -p "$DST_DIR"
+cp -f "$MIN_JSON" "$DST_DIR/${ALIAS}.min.json"
+
+( cd "$CONTACTCARDS_DIR"
+  git add "wspr/$ALIAS/${ALIAS}.min.json"
+  if git diff --cached --quiet; then
+    echo "    no changes to commit"
+  else
+    git commit -m "Add ${ALIAS} contactcard"
+    git push
+  fi
+)
+
+# pin URI to the exact commit (available immediately, unlike Pages)
+COMMIT="$(cd "$CONTACTCARDS_DIR" && git rev-parse HEAD)"
+URI="https://raw.githubusercontent.com/bjomard/ContactCards/${COMMIT}/${REL_PATH}"
+echo "    uri(raw,pinned)=$URI"
+
+# best-effort wait for RAW (normally immediate)
+echo "    wait for RAW (best-effort)"
+for i in $(seq 1 10); do
+  if curl -fsSL "$URI" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+# ===== step 6: sha256 + publisher sig =====
+echo "[6] Compute sha256 + sign (publisher key)"
+
+# hash LOCAL (fiable, pas de timing Pages)
+SHA="0x$(shasum -a 256 "$MIN_JSON" | awk '{print $1}')"
+
+# signer SHA (et on passe SHA+PK dans l'env du node)
+SIG="$(PUBLISHER_PRIVATE_KEY="$PUBLISHER_PRIVATE_KEY" SHA="$SHA" node - <<'NODE'
+import { ethers } from "ethers";
+const pk = process.env.PUBLISHER_PRIVATE_KEY;
+const sha = process.env.SHA;
+if (!pk) throw new Error("Missing PUBLISHER_PRIVATE_KEY");
+if (!sha) throw new Error("Missing SHA");
+const w = new ethers.Wallet(pk);
+const sig = await w.signMessage(ethers.getBytes(sha));
+console.log(sig);
+NODE
+)"
+
+echo "    uri=$URI"
+echo "    sha=$SHA"
+echo "    sig=$SIG"
+
+# ===== step 7: publish ENS pointer =====
+echo "[7] ENS publish (f3nix.wspr.*)"
+( cd "$ENS_DIR" && npm run -s publish -- "$NAME" "$URI" "$SHA" "$SIG" "$ROOT_SIGNER" )
+
+# ===== step 8: verify =====
+echo "[8] Verify resolve"
+( cd "$ENS_DIR" && NODE_NO_WARNINGS=1 npm run -s resolve -- "$NAME" | jq . )
+
+echo "✅ Onboarded: $NAME"
+echo "   URI: $URI"
+echo "   SHA: $SHA"
+

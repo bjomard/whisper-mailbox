@@ -1,0 +1,7 @@
+{
+  "v": 1,
+  "scp": "whisper",
+  "min_tier": "C",
+  "ops": ["card_sign", "handshake", "msg_sign"],
+  "aud": ["whisper.client", "whisper.mailbox", "whisper.relay"]
+}

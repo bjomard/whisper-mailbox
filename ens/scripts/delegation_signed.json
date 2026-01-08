@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "type": "delegation",
+  "issuer": {
+    "alg": "secp256k1_eip191",
+    "chain": "eip155:1",
+    "address": "0x9835687c0eC5228913A79Fcfc11F6ac0712DE7Bb",
+    "fingerprint": "eip155:1:0x9835687c0ec5228913a79fcfc11f6ac0712de7bb"
+  },
+  "delegate": {
+    "alg": "secp256k1_eip191",
+    "chain": "eip155:1",
+    "address": "0xa8ABBb681425370962CaA2a713cf1b40b3a64A3c",
+    "fingerprint": "eip155:1:0xa8abbb681425370962caa2a713cf1b40b3a64a3c"
+  },
+  "scope": "whisper",
+  "permissions": [
+    "sign_pointer",
+    "publish"
+  ],
+  "issued_at": 1767728733,
+  "expires": 1830800733,
+  "signature": "0xd29b411e458c0431f6cc9a2b98f35a0d66d0a11575f521aa4c68610c123e54aa1d4eadb79ae688ed49993d30ce6490e059e1895ca8294ddf3a5297e41b03a1f01c"
+}

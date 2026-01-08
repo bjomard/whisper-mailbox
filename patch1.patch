@@ -1,0 +1,10 @@
+--- ens/scripts/whisper_onboard.sh
++++ ens/scripts/whisper_onboard.sh
+@@ -20,6 +20,9 @@
+ ALIAS="${1:-}"
+ [[ -n "$ALIAS" ]] || die "Usage: whisper_onboard.sh <alias> [pubkeys.json]"
+ 
++# allow reuse if name already exists and is owned by our publisher
++REUSE_EXISTING="${REUSE_EXISTING:-0}"
++
+ PUBKEYS_FILE="${2:-}"  # optional; if omitted, we'll require env vars with pub keys
