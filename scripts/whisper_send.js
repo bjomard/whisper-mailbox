@@ -2,12 +2,17 @@
 
 import { ethers } from "ethers";
 import * as x25519 from "@stablelib/x25519";
-import { randomBytes } from "crypto";
+import nacl from "tweetnacl";
+import { createHash, randomBytes } from "crypto";
 import fs from "fs";
 
 const ENS_REGISTRY_ADDR = "0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e";
 const RPC_URL = process.env.RPC_URL || "https://1rpc.io/eth";
 const MAILBOX_URL = process.env.MAILBOX_URLS || "http://localhost:8080";
+
+function sha256(data) {
+  return createHash('sha256').update(data).digest();
+}
 
 function spkiToRaw(spkiBase64url) {
   const spki = base64urlToUint8Array(spkiBase64url);
@@ -63,7 +68,7 @@ function loadKeys(alias) {
     throw new Error(`Keys not found: ${keyFile}`);
   }
   if (!fs.existsSync(mailboxFile)) {
-    throw new Error(`Mailbox not found: ${mailboxFile}. Run: node scripts/whisper_mailbox_setup.js create ${alias}`);
+    throw new Error(`Mailbox not found: ${mailboxFile}`);
   }
   
   return {
@@ -103,19 +108,36 @@ async function sendMessage(senderAlias, recipientName, message) {
     message
   );
   
-  // Créer l'enveloppe JSON
   const envelope = {
     from: `${senderAlias}.wspr.f3nixid.eth`,
+    to: recipientName,
     ephemeral_public: encrypted.ephemeralPublic,
     ciphertext: encrypted.ciphertext,
     timestamp: Date.now()
   };
   
-  // ✅ Envoyer directement les bytes JSON (pas de double encodage)
+  console.log(`🔐 Message encrypted`);
+  
+  // Signer avec tweetnacl (Ed25519)
+  const ciphertextHash = sha256(Buffer.from(envelope.ciphertext, 'utf8'));
+  const messageToSign = JSON.stringify({
+    from: envelope.from,
+    to: envelope.to,
+    ephemeral_public: envelope.ephemeral_public,
+    ciphertext_hash: uint8ArrayToBase64url(ciphertextHash),
+    timestamp: envelope.timestamp
+  });
+  
+  const senderEd25519SecretKey = base64urlToUint8Array(sender.keys.private.ed25519_sk_b64u);
+  const messageBytes = new TextEncoder().encode(messageToSign);
+  
+  const signature = nacl.sign.detached(messageBytes, senderEd25519SecretKey);
+  envelope.signature = uint8ArrayToBase64url(signature);
+  
+  console.log(`✍️  Message signed with Ed25519`);
+  
   const blob = Buffer.from(JSON.stringify(envelope), 'utf8');
   const msgId = uint8ArrayToBase64url(randomBytes(24));
-  
-  console.log(`🔐 Message encrypted`);
   
   const depositToken = recipient.mailbox.deposit_tokens[0];
   
@@ -128,7 +150,7 @@ async function sendMessage(senderAlias, recipientName, message) {
         "X-Whisper-MsgId": msgId,
         "Content-Type": "application/octet-stream"
       },
-      body: blob  // ✅ Envoyer directement les bytes
+      body: blob
     }
   );
   
@@ -149,13 +171,13 @@ const message = process.argv.slice(4).join(" ");
 
 if (!senderAlias || !recipientName || !message) {
   console.log(`
-📨 Whisper Send Message
+📨 Whisper Send Message (with Ed25519 signatures)
 
 Usage:
   node scripts/whisper_send.js <sender_alias> <recipient_name> <message>
 
 Example:
-  node scripts/whisper_send.js alice bob.wspr.f3nixid.eth "Hello Bob!"
+  node scripts/whisper_send.js alice bob.wspr.f3nixid.eth "Hello!"
   `);
   process.exit(1);
 }
