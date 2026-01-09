@@ -17,8 +17,10 @@ async function startBootstrapNode() {
   const node = await createLibp2p({
     addresses: {
       listen: [
-        `/ip4/${DHT_HOST}/tcp/${DHT_PORT}`,
-        `/ip6/::/tcp/${DHT_PORT}`
+        `/ip4/0.0.0.0/tcp/${DHT_PORT}`
+     ],
+     announce: [
+        `/ip4/51.77.145.37/tcp/${DHT_PORT}`
       ]
     },
     transports: [tcp()],
@@ -48,12 +50,17 @@ async function startBootstrapNode() {
   console.log('   Peer ID:', node.peerId.toString());
   console.log('');
   console.log('📡 Listening on:');
-  
-  const addrs = node.getMultiaddrs();
-  addrs.forEach(addr => {
-    console.log('   ', addr.toString());
-  });
-  
+
+const addrs = node.getMultiaddrs();
+addrs.forEach(addr => {
+  console.log('   ', addr.toString());
+});
+
+console.log('');
+console.log('🔗 Bootstrap multiaddr (use this in clients):');
+console.log('    /ip4/51.77.145.37/tcp/4001/p2p/' + node.peerId.toString());
+
+
   console.log('');
   console.log('🔗 Bootstrap multiaddr (use this in clients):');
   addrs.forEach(addr => {
