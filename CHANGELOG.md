@@ -85,3 +85,357 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [1.1.0]: https://github.com/bjomard/whisper-mailbox/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/bjomard/whisper-mailbox/releases/tag/v1.0.0
+
+## [3.0.1] - 2026-01-09
+
+### 🎉 DHT Storage Implementation
+
+**Major Features:**
+- ✅ **DHT Storage Working!** - libp2p Kademlia DHT with put/get
+- ✅ Multi-provider delivery architecture
+- ✅ Automatic cascade fallback (DHT → Mailbox)
+- ✅ Message deduplication across providers
+
+**Technical Implementation:**
+- libp2p full DHT node with identify + ping services
+- CID-based content addressing
+- Time-bucketed key generation (hourly)
+- 48-hour message TTL
+- Zero-cost message delivery (DHT mode)
+
+**Performance:**
+- DHT storage: 100-150ms
+- DHT retrieval: Code functional (needs bootstrap)
+- Mailbox fallback: 50-150ms
+
+**Known Limitations:**
+- DHT nodes isolated without bootstrap network
+- Cross-node retrieval pending (Phase 9.2)
+- Local testing only
+
+**Dependencies Added:**
+- @libp2p/identify
+- @libp2p/ping  
+- multiformats (CID support)
+
+---
+
+## [3.0.0] - 2026-01-09
+
+### 🔐 Multi-Provider Delivery System
+
+**Major Features:**
+- ✅ Modular provider architecture
+- ✅ DeliveryManager with cascade/parallel/redundant strategies
+- ✅ DHT Provider (structure complete)
+- ✅ Mailbox Provider (fully functional)
+- ✅ Message acknowledgment (even for failed messages)
+
+**Scripts:**
+- whisper_send_v3.js - Multi-provider send
+- whisper_receive_v3.js - Multi-source receive with dedup
+
+---
+
+## [2.0.0] - 2026-01-09
+
+### 🔒 Double Ratchet Protocol
+
+**CRITICAL BUG FIX:**
+- Fixed `currentDHPublicKey` not updating after decrypt with DH ratchet
+- Resolved asymmetric message 3 failure pattern
+
+**Major Features:**
+- ✅ Complete Double Ratchet implementation (Signal Protocol)
+- ✅ Forward Secrecy
+- ✅ Post-Compromise Security
+- ✅ Per-message key rotation
+- ✅ Session persistence with SessionManager
+- ✅ X3DH-like initial key agreement
+
+**Components:**
+- `lib/double-ratchet/kdf.js` - HKDF-based key derivation
+- `lib/double-ratchet/symmetric-ratchet.js` - Chain key ratcheting
+- `lib/double-ratchet/dh-ratchet.js` - X25519 DH ratchet
+- `lib/double-ratchet/session.js` - Complete Double Ratchet
+- `lib/double-ratchet/session-manager.js` - Multi-session storage
+- `lib/double-ratchet/x3dh-init.js` - Initial key agreement
+
+**Scripts:**
+- whisper_send_v2.js - Send with Double Ratchet
+- whisper_receive_v2.js - Receive with Double Ratchet
+
+**Tests:**
+- 9 comprehensive test suites
+- Full conversation test passing
+- Session persistence verified
+
+---
+
+## [1.1.0] - 2026-01-08
+
+### ✍️ Ed25519 Message Authentication
+
+**Major Features:**
+- ✅ Ed25519 signatures on all messages
+- ✅ Signature verification on receive
+- ✅ Protection against message forgery
+
+**Security Improvements:**
+- Sender authentication
+- Message integrity verification
+- Replay attack protection (timestamp-based)
+
+---
+
+## [1.0.1] - 2026-01-07
+
+### 🎯 Whisper v1 Baseline
+
+**Initial Release:**
+- ENS-based identity resolution
+- Contact card system (IPFS/Arweave)
+- Mailbox message delivery
+- Basic send/receive scripts
+- User onboarding flow
+
+---
+
+**Format**: [Major.Minor.Patch]
+**Date**: YYYY-MM-DD
+
+## [3.0.1] - 2026-01-09
+
+### 🎉 DHT Storage Implementation
+
+**Major Features:**
+- ✅ **DHT Storage Working!** - libp2p Kademlia DHT with put/get
+- ✅ Multi-provider delivery architecture
+- ✅ Automatic cascade fallback (DHT → Mailbox)
+- ✅ Message deduplication across providers
+
+**Technical Implementation:**
+- libp2p full DHT node with identify + ping services
+- CID-based content addressing
+- Time-bucketed key generation (hourly)
+- 48-hour message TTL
+- Zero-cost message delivery (DHT mode)
+
+**Performance:**
+- DHT storage: 100-150ms
+- DHT retrieval: Code functional (needs bootstrap)
+- Mailbox fallback: 50-150ms
+
+**Known Limitations:**
+- DHT nodes isolated without bootstrap network
+- Cross-node retrieval pending (Phase 9.2)
+- Local testing only
+
+**Dependencies Added:**
+- @libp2p/identify
+- @libp2p/ping  
+- multiformats (CID support)
+
+---
+
+## [3.0.0] - 2026-01-09
+
+### 🔐 Multi-Provider Delivery System
+
+**Major Features:**
+- ✅ Modular provider architecture
+- ✅ DeliveryManager with cascade/parallel/redundant strategies
+- ✅ DHT Provider (structure complete)
+- ✅ Mailbox Provider (fully functional)
+- ✅ Message acknowledgment (even for failed messages)
+
+**Scripts:**
+- whisper_send_v3.js - Multi-provider send
+- whisper_receive_v3.js - Multi-source receive with dedup
+
+---
+
+## [2.0.0] - 2026-01-09
+
+### 🔒 Double Ratchet Protocol
+
+**CRITICAL BUG FIX:**
+- Fixed `currentDHPublicKey` not updating after decrypt with DH ratchet
+- Resolved asymmetric message 3 failure pattern
+
+**Major Features:**
+- ✅ Complete Double Ratchet implementation (Signal Protocol)
+- ✅ Forward Secrecy
+- ✅ Post-Compromise Security
+- ✅ Per-message key rotation
+- ✅ Session persistence with SessionManager
+- ✅ X3DH-like initial key agreement
+
+**Components:**
+- `lib/double-ratchet/kdf.js` - HKDF-based key derivation
+- `lib/double-ratchet/symmetric-ratchet.js` - Chain key ratcheting
+- `lib/double-ratchet/dh-ratchet.js` - X25519 DH ratchet
+- `lib/double-ratchet/session.js` - Complete Double Ratchet
+- `lib/double-ratchet/session-manager.js` - Multi-session storage
+- `lib/double-ratchet/x3dh-init.js` - Initial key agreement
+
+**Scripts:**
+- whisper_send_v2.js - Send with Double Ratchet
+- whisper_receive_v2.js - Receive with Double Ratchet
+
+**Tests:**
+- 9 comprehensive test suites
+- Full conversation test passing
+- Session persistence verified
+
+---
+
+## [1.1.0] - 2026-01-08
+
+### ✍️ Ed25519 Message Authentication
+
+**Major Features:**
+- ✅ Ed25519 signatures on all messages
+- ✅ Signature verification on receive
+- ✅ Protection against message forgery
+
+**Security Improvements:**
+- Sender authentication
+- Message integrity verification
+- Replay attack protection (timestamp-based)
+
+---
+
+## [1.0.1] - 2026-01-07
+
+### 🎯 Whisper v1 Baseline
+
+**Initial Release:**
+- ENS-based identity resolution
+- Contact card system (IPFS/Arweave)
+- Mailbox message delivery
+- Basic send/receive scripts
+- User onboarding flow
+
+---
+
+**Format**: [Major.Minor.Patch]
+**Date**: YYYY-MM-DD
+
+## [3.0.1] - 2026-01-09
+
+### 🎉 DHT Storage Implementation
+
+**Major Features:**
+- ✅ **DHT Storage Working!** - libp2p Kademlia DHT with put/get
+- ✅ Multi-provider delivery architecture
+- ✅ Automatic cascade fallback (DHT → Mailbox)
+- ✅ Message deduplication across providers
+
+**Technical Implementation:**
+- libp2p full DHT node with identify + ping services
+- CID-based content addressing
+- Time-bucketed key generation (hourly)
+- 48-hour message TTL
+- Zero-cost message delivery (DHT mode)
+
+**Performance:**
+- DHT storage: 100-150ms
+- DHT retrieval: Code functional (needs bootstrap)
+- Mailbox fallback: 50-150ms
+
+**Known Limitations:**
+- DHT nodes isolated without bootstrap network
+- Cross-node retrieval pending (Phase 9.2)
+- Local testing only
+
+**Dependencies Added:**
+- @libp2p/identify
+- @libp2p/ping  
+- multiformats (CID support)
+
+---
+
+## [3.0.0] - 2026-01-09
+
+### 🔐 Multi-Provider Delivery System
+
+**Major Features:**
+- ✅ Modular provider architecture
+- ✅ DeliveryManager with cascade/parallel/redundant strategies
+- ✅ DHT Provider (structure complete)
+- ✅ Mailbox Provider (fully functional)
+- ✅ Message acknowledgment (even for failed messages)
+
+**Scripts:**
+- whisper_send_v3.js - Multi-provider send
+- whisper_receive_v3.js - Multi-source receive with dedup
+
+---
+
+## [2.0.0] - 2026-01-09
+
+### 🔒 Double Ratchet Protocol
+
+**CRITICAL BUG FIX:**
+- Fixed `currentDHPublicKey` not updating after decrypt with DH ratchet
+- Resolved asymmetric message 3 failure pattern
+
+**Major Features:**
+- ✅ Complete Double Ratchet implementation (Signal Protocol)
+- ✅ Forward Secrecy
+- ✅ Post-Compromise Security
+- ✅ Per-message key rotation
+- ✅ Session persistence with SessionManager
+- ✅ X3DH-like initial key agreement
+
+**Components:**
+- `lib/double-ratchet/kdf.js` - HKDF-based key derivation
+- `lib/double-ratchet/symmetric-ratchet.js` - Chain key ratcheting
+- `lib/double-ratchet/dh-ratchet.js` - X25519 DH ratchet
+- `lib/double-ratchet/session.js` - Complete Double Ratchet
+- `lib/double-ratchet/session-manager.js` - Multi-session storage
+- `lib/double-ratchet/x3dh-init.js` - Initial key agreement
+
+**Scripts:**
+- whisper_send_v2.js - Send with Double Ratchet
+- whisper_receive_v2.js - Receive with Double Ratchet
+
+**Tests:**
+- 9 comprehensive test suites
+- Full conversation test passing
+- Session persistence verified
+
+---
+
+## [1.1.0] - 2026-01-08
+
+### ✍️ Ed25519 Message Authentication
+
+**Major Features:**
+- ✅ Ed25519 signatures on all messages
+- ✅ Signature verification on receive
+- ✅ Protection against message forgery
+
+**Security Improvements:**
+- Sender authentication
+- Message integrity verification
+- Replay attack protection (timestamp-based)
+
+---
+
+## [1.0.1] - 2026-01-07
+
+### 🎯 Whisper v1 Baseline
+
+**Initial Release:**
+- ENS-based identity resolution
+- Contact card system (IPFS/Arweave)
+- Mailbox message delivery
+- Basic send/receive scripts
+- User onboarding flow
+
+---
+
+**Format**: [Major.Minor.Patch]
+**Date**: YYYY-MM-DD
