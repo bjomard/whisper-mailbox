@@ -150,10 +150,12 @@ async function sendMessage(senderAlias, recipientName, message, options = {}) {
     strategy: options.strategy || 'cascade'
   });
   
-  // Add providers
+  // ✅ ENABLE DHT
+  const useDHT = options.dht !== false; // Default: true
+  
   delivery.addProvider(new DHTProvider({
     priority: 1,
-    enabled: false // Not implemented yet
+    enabled: useDHT
   }));
   
   delivery.addProvider(new MailboxProvider({
@@ -170,7 +172,7 @@ async function sendMessage(senderAlias, recipientName, message, options = {}) {
   console.log('\n📊 Delivery Summary:');
   for (const result of results) {
     if (result.success) {
-      console.log(`   ✅ ${result.provider}: ${result.messageId} (${result.latency}ms)`);
+      console.log(`   ✅ ${result.provider}: ${result.messageId?.substring(0, 32)}... (${result.latency}ms)`);
     } else {
       console.log(`   ❌ ${result.provider}: ${result.error}`);
     }
@@ -189,14 +191,10 @@ if (!senderAlias || !recipientName || !message) {
 📤 Whisper Send v3.0 (Multi-provider)
 
 Usage:
-  node scripts/whisper_send_v3.js <sender> <recipient> <message> [options]
+  node scripts/whisper_send_v3.js <sender> <recipient> <message>
 
 Examples:
   node scripts/whisper_send_v3.js alice bob.wspr.f3nixid.eth "Hello!"
-  
-Options (TODO):
-  --strategy=cascade|parallel|redundant
-  --guaranteed (use premium mailbox)
   `);
   process.exit(1);
 }
