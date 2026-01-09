@@ -354,14 +354,28 @@ Ready to take back your privacy?
 
 ---
 
+
 ## 📄 License
 
-MIT License - Free to use, modify, and distribute.
+**Business Source License 1.1** (BSL 1.1)
 
-See [LICENSE](LICENSE) file for details.
+- **Non-commercial use**: ✅ Free (research, testing, personal use)
+- **Commercial use**: 💼 Requires separate license agreement
+- **Change date**: 2029-01-01
+- **Change license**: GNU GPL v3.0 (becomes open source)
 
----
+**What this means:**
+- ✅ You can use Whisper for free for non-commercial purposes
+- ✅ You can study, modify, and contribute to the code
+- ✅ Community contributions are welcome
+- ❌ You cannot sell Whisper or offer it as a paid service without authorization
+- 🔓 In 2029, Whisper becomes fully open source (GPL v3.0)
 
+For commercial licensing inquiries: **f3nix-sas@protonmail.com**
+
+See [LICENSE](LICENSE) file for complete terms.
+
+Copyright (c) 2026 F3NIX SAS. All rights reserved.
 ## 🙏 Acknowledgments
 
 Built on the shoulders of giants:
@@ -382,7 +396,7 @@ Special thanks to the open source community.
 **Whisper - Messaging that respects you.**
 
 [![Status](https://img.shields.io/badge/status-experimental-orange)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![License](https://img.shields.io/badge/license-BSL_1.1-blue)]()
 [![Crypto](https://img.shields.io/badge/crypto-Signal_Protocol-green)]()
 
 </div>
