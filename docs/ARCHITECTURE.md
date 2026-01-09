@@ -39,18 +39,90 @@ alice.wspr.f3nixid.eth
 **Contact Card Structure**
 ```json
 {
-  "version": 1,
-  "usage_identity": {
-    "pub": {
-      "ed25519_spki_b64u": "...",  // Signing key
-      "x25519_spki_b64u": "..."     // Encryption key
-    }
-  },
-  "proof": {
-    "signature": "...",
-    "timestamp": 1234567890
-  }
-}
+   "v": 1,
+   "type": "whisper.contact_card",
+   "subject": "bob.wspr.f3nixid.eth",
+ 
+   "profile": {
+     "scope": "whisper",
+     "min_security_tier": "C"
+   },
+ 
+   "root_identity": {
+     "alg": "secp256k1_eip191",
+     "chain": "eip155:1",
+     "address": "0x98...3E7Bb",
+     "fingerprint": "eip155:1:0x98...E7Bb"
+   },
+ 
+   "usage_identity": {
+     "alg": "ed25519+x25519",
+     "pub": {
+       "x25519_spki_b64u": "MCow...hBXAk",
+       "ed25519_spki_b64u": "MCow...QxgpU"
+     },
+     "fingerprint": "spki:ed25519:MCow...xgpU"
+   },
+ 
+   "delegation": {
+     "ref": "sha256:0x52ec...9b56",
+     "object": {
+       "v": 1,
+       "type": "f3nix.delegation",
+       "issuer": {
+         "alg": "secp256k1_eip191",
+         "chain": "eip155:1",
+         "address": "0x983...DE7Bb",
+         "fingerprint": "eip155:1:0x9835...de7bb"
+       },
+       "subject": {
+         "alg": "ed25519",
+         "fingerprint": "spki:ed25519:MCow...fQxgpU"
+       },
+       "scope": "whisper",
+       "constraints": {
+         "min_security_tier": "C",
+         "not_before": "2026-01-01T00:00:00Z",
+         "expires_at": "2027-01-01T00:00:00Z",
+         "audience": ["whisper.client", "whisper.mailbox", "whisper.relay"],
+         "allowed_ops": [
+           "whisper_msg_sign",
+           "whisper_handshake",
+           "whisper_card_sign"
+         ]
+       },
+      "sig": {
+         "alg": "secp256k1_eip191",
+         "address": "0x983...DE7Bb",
+         "value": "0x2fc4...2a961b"
+       }
+     }
+   },
+ 
+   "card": {
+     "version": 1,
+     "updated_at": 1767084329
+   },
+
+   "mailboxes": [
+     {
+       "url": "https://hyacinth-bromidic-cordell.ngrok-free.dev",
+       "id": "xZBn...w011",
+       "prio": 100
+     },
+     {
+       "url": "http://localhost:8080",
+       "id": "xZBncGluWkgUI444GWwmzniqLUqiw011",
+       "prio": 10
+     }
+   ],
+ 
+   "capabilities": {
+     "multi_mailbox": false,
+     "pow": false,
+     "nfc_pairing": false
+   }
+ }
 ```
 
 ### **2. Encryption Layer (Double Ratchet)**
