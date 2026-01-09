@@ -78,12 +78,15 @@ async function receiveMessages(recipientAlias) {
   const delivery = new DeliveryManager({
     strategy: 'parallel' // Query all sources in parallel
   });
-  
+ 
   delivery.addProvider(new DHTProvider({
-    priority: 1,
-    enabled: false // Disabled until bootstrap nodes available
-  }));
-  
+  priority: 1,
+  enabled: true,
+  bootstrapNodes: [
+    '/ip4/51.77.145.37/tcp/4001/p2p/12D3KooWHDrEXRdeXJcSqLfJwVdj54aF3V7JHuMWZPVdRnCZqeSR'
+  ]
+}));
+
   delivery.addProvider(new MailboxProvider({
     priority: 2,
     enabled: true

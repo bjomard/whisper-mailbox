@@ -154,11 +154,15 @@ async function sendMessage(senderAlias, recipientName, message, options = {}) {
   const useDHT = options.dht !== false; // Default: true
   
   // DHT Provider disabled until bootstrap nodes available
-  
-  delivery.addProvider(new MailboxProvider({
-    priority: 2,
-    enabled: true
+
+  delivery.addProvider(new DHTProvider({
+   priority: 1,
+   enabled: true,
+   bootstrapNodes: [
+     '/ip4/51.77.145.37/tcp/4001/p2p/12D3KooWHDrEXRdeXJcSqLfJwVdj54aF3V7JHuMWZPVdRnCZqeSR'
+   ]
   }));
+
   
   // Send via delivery manager
   const results = await delivery.send(recipientIdentity, envelope, options);
