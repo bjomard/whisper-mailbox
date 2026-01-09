@@ -132,6 +132,7 @@ async function receiveMessages(recipientAlias) {
         
         console.log(`   ✅ Signature verified`);
         
+        // ✅ CORRECTION: Toujours recharger depuis le disque
         let session = sessionManager.loadSession(recipientIdentity, envelope.from);
         
         if (!session) {
@@ -186,6 +187,7 @@ async function receiveMessages(recipientAlias) {
         const plaintext = session.decrypt(ciphertext, mac, header);
         const message = new TextDecoder().decode(plaintext);
         
+        // ✅ IMPORTANT: Sauvegarder après chaque message
         sessionManager.saveSession(recipientIdentity, envelope.from, session);
         
         console.log(`   🔓 Message decrypted`);
