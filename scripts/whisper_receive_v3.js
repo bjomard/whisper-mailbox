@@ -81,7 +81,7 @@ async function receiveMessages(recipientAlias) {
   
   delivery.addProvider(new DHTProvider({
     priority: 1,
-    enabled: false // Not implemented yet
+    enabled: false // Disabled until bootstrap nodes available
   }));
   
   delivery.addProvider(new MailboxProvider({

@@ -153,10 +153,7 @@ async function sendMessage(senderAlias, recipientName, message, options = {}) {
   // ✅ ENABLE DHT
   const useDHT = options.dht !== false; // Default: true
   
-  delivery.addProvider(new DHTProvider({
-    priority: 1,
-    enabled: useDHT
-  }));
+  // DHT Provider disabled until bootstrap nodes available
   
   delivery.addProvider(new MailboxProvider({
     priority: 2,
